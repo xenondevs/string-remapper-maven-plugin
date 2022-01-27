@@ -33,36 +33,34 @@ class StringRemapper : AbstractMojo() {
     @Parameter(defaultValue = "\${project.remoteProjectRepositories}", readonly = true, required = true)
     private val repositories: List<RemoteRepository>? = null
     
+    @Parameter(name = "srcIn", required = false)
+    private lateinit var srcIn: List<String>
+    
+    @Parameter(name = "srcOut", required = true)
+    private lateinit var srcOut: List<String>
+    
     @Parameter(name = "mapsMojang", required = true)
     private lateinit var mapsMojang: String
     
     @Parameter(name = "mapsSpigot", required = true)
-    private lateinit var mapsSpigot: String
-    
-    @Parameter(name = "mapsSpigotMembers", required = true)
-    private lateinit var mapsSpigotMembers: String
+    private lateinit var mapsSpigot: List<String>
     
     @Parameter(name = "remapGoal", required = true)
     private lateinit var remapGoal: String
     
-    private val compileSourceRoots by lazy { project.compileSourceRoots as MutableList<String> }
+    private val compileSourceRoots by lazy { if (::srcIn.isInitialized) srcIn else project.compileSourceRoots as MutableList<String> }
     private val goal by lazy { Mappings.ResolveGoal.valueOf(remapGoal.uppercase()) }
     
     override fun execute() {
         log.info("Loading mappings...")
         loadMappings()
-        log.info("Copying sources...")
-        copySourceDirectories()
         log.info("Remapping...")
         performRemapping()
     }
     
     private fun loadMappings() {
         Mappings.loadMojangMappings(resolveArtifact(mapsMojang).file.bufferedReader())
-        Mappings.loadSpigotMappings(
-            resolveArtifact(mapsSpigot).file.bufferedReader(),
-            resolveArtifact(mapsSpigotMembers).file.bufferedReader()
-        )
+        mapsSpigot.map(::resolveArtifact).forEach { Mappings.loadSpigotMappings(it.file.bufferedReader()) }
     }
     
     private fun resolveArtifact(cords: String): Artifact {
@@ -73,28 +71,28 @@ class StringRemapper : AbstractMojo() {
         return repoSystem.resolveArtifact(repoSession, req).artifact
     }
     
-    private fun copySourceDirectories() {
+    private fun performRemapping() {
         val baseDir = project.basedir
         val buildDir = File(buildDir)
         
+        val sourceRoots = if (::srcIn.isInitialized) srcIn else compileSourceRoots
+        
         // Copy sources
-        compileSourceRoots.withIndex().forEach { (i, path) ->
+        sourceRoots.withIndex().forEach { (i, path) ->
             val sourceRoot = File(path)
-            val copiedSourceRoot = File(buildDir, "string-remapper-sources" + sourceRoot.absolutePath.removePrefix(baseDir.absolutePath))
-            sourceRoot.copyRecursively(copiedSourceRoot)
-            compileSourceRoots[i] = copiedSourceRoot.absolutePath
-        }
-    }
-    
-    private fun performRemapping() {
-        compileSourceRoots
-            .map(::File)
-            .forEach { sourceRoot ->
-                sourceRoot.walkTopDown().filter(File::isFile).forEach { file ->
-                    log.debug("Remapping: ${file.absolutePath}")
-                    FileRemapper(file).remap(goal)
-                }
+            val copiedSourceRoot = File(
+                buildDir,
+                (srcOut.getOrNull(i) ?: "string-remapper-sources")
+                    + sourceRoot.absolutePath.removePrefix(baseDir.absolutePath)
+            )
+            copiedSourceRoot.deleteRecursively()
+            sourceRoot.copyRecursively(copiedSourceRoot, true)
+            
+            copiedSourceRoot.walkTopDown().filter(File::isFile).forEach { file ->
+                log.debug("Remapping: ${file.absolutePath}")
+                FileRemapper(file).remap(goal)
             }
+        }
     }
     
 }

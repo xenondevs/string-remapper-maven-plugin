@@ -8,6 +8,7 @@ private val MOJANG_START_CLASS_PATTERN = Regex("""^([\w.$]*) -> ([\w.$]*):$""")
 private val MOJANG_DEFINE_METHOD_PATTERN = Regex("""^ {4}[\d:]*([\w.$\[\]]*) ([\w$]*)\(([\w*.,$\[\]]*)\) -> ([\w$]*)$""")
 private val MOJANG_DEFINE_FIELD_PATTERN = Regex("""^ {4}([\w.$\[\]]*) ([\w_$\[\]]*) -> ([\w$]*)$""")
 
+private val SPIGOT_DEFINE_CLASS_PATTERN = Regex("""^([\w/$]*) ([\w/$]*)$""")
 private val SPIGOT_DEFINE_METHOD_PATTERN = Regex("""^([\w/$]*) ([\w$]*) (\([\w/$\[\];]*\)[\w/$\[\];]*) ([\w/$;]*)$""")
 private val SPIGOT_DEFINE_FIELD_PATTERN = Regex("""^([\w/$]*) ([\w$]*) ([\w$]*)$""")
 
@@ -21,6 +22,8 @@ object Mappings {
     
     private val mojangMappings = HashMap<String, ClassMappings>()
     private val spigotMappings = HashMap<String, ClassMappings>()
+    
+    private val reverseSpigotMappings = HashMap<String, ClassMappings>()
     
     fun loadMojangMappings(reader: BufferedReader) {
         var classMappings: ClassMappings? = null
@@ -81,18 +84,20 @@ object Mappings {
         }
     }
     
-    fun loadSpigotMappings(mapsReader: BufferedReader, membersReader: BufferedReader) {
-        val reverseSpigotMappings = HashMap<String, ClassMappings>()
-        mapsReader.useLinesForEach { line ->
+    fun loadSpigotMappings(reader: BufferedReader) {
+        reader.useLinesForEach { line ->
             if (line.startsWith('#') || line.isBlank()) return@useLinesForEach
-            val array = line.split(' ')
-            val classMappings = ClassMappings(array[1].replace('/', '.'))
-            spigotMappings[array[0]] = classMappings
-            reverseSpigotMappings[array[1]] = classMappings
-        }
-        
-        membersReader.useLinesForEach { line ->
-            if (line.startsWith('#') || line.isBlank()) return@useLinesForEach
+            
+            val defineClassResult = SPIGOT_DEFINE_CLASS_PATTERN.find(line)
+            if (defineClassResult != null) {
+                val obfuscatedClassName = defineClassResult.groups[1]!!.value
+                val spigotMappedClassName = defineClassResult.groups[2]!!.value
+                val classMappings = ClassMappings(spigotMappedClassName.replace('/', '.'))
+                spigotMappings[obfuscatedClassName] = classMappings
+                reverseSpigotMappings[spigotMappedClassName] = classMappings
+                
+                return@useLinesForEach
+            }
             
             val defineMethodResult = SPIGOT_DEFINE_METHOD_PATTERN.find(line)
             if (defineMethodResult != null) {
@@ -159,7 +164,7 @@ object Mappings {
             if (goal == ResolveGoal.OBFUSCATED || goal == ResolveGoal.SPIGOT) return obfuscatedMethodName
             
             val spigotClassMappings = spigotMappings[mojangClassMappings.name]!!
-            return spigotClassMappings.lightMethodMappings[obfuscatedMethodName]!!
+            return spigotClassMappings.lightMethodMappings[obfuscatedMethodName] ?: obfuscatedMethodName
         }
         
         val methodLookupResult = METHOD_MAPPINGS_LOOKUP_PATTERN.find(lookup)
@@ -180,7 +185,8 @@ object Mappings {
             val spigotMethodParameters = mojangMethodParameters.split(',').joinToString(",", transform = ::getSpigotClassName)
             
             val spigotClassMappings = spigotMappings[mojangClassMappings.name]!!
-            return spigotClassMappings.methodMappings[MethodIdentifier(obfuscatedMethodName, spigotReturnTypeClassName, spigotMethodParameters)]!!
+            return spigotClassMappings.methodMappings[MethodIdentifier(obfuscatedMethodName, spigotReturnTypeClassName, spigotMethodParameters)]
+                ?: obfuscatedMethodName
         }
         
         return null
@@ -200,7 +206,7 @@ object Mappings {
             if (goal == ResolveGoal.OBFUSCATED || goal == ResolveGoal.SPIGOT) return obfuscatedFieldName
             
             val spigotClassMappings = spigotMappings[mojangClassMappings.name]!!
-            return spigotClassMappings.lightFieldMappings[obfuscatedFieldName]!!
+            return spigotClassMappings.lightFieldMappings[obfuscatedFieldName] ?: obfuscatedFieldName
         }
         
         val fieldLookupResult = FIELD_MAPPINGS_LOOKUP_PATTERN.find(lookup)
@@ -217,7 +223,7 @@ object Mappings {
             if (goal == ResolveGoal.OBFUSCATED || goal == ResolveGoal.SPIGOT) return obfuscatedFieldName
             
             val spigotClassMappings = spigotMappings[mojangClassMappings.name]!!
-            return spigotClassMappings.lightFieldMappings[obfuscatedFieldName]!!
+            return spigotClassMappings.lightFieldMappings[obfuscatedFieldName] ?: obfuscatedFieldName
         }
         
         return null
