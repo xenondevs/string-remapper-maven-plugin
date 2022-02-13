@@ -16,7 +16,7 @@ import java.io.File
 
 @Suppress("UNCHECKED_CAST")
 @Mojo(name = "remap", defaultPhase = LifecyclePhase.PROCESS_SOURCES)
-class StringRemapper : AbstractMojo() {
+class RemapMojo : AbstractMojo() {
     
     @Parameter(defaultValue = "\${project}", readonly = true, required = true)
     private lateinit var project: MavenProject
