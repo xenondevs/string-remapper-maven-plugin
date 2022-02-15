@@ -15,14 +15,11 @@ import org.eclipse.aether.resolution.ArtifactRequest
 import java.io.File
 
 @Suppress("UNCHECKED_CAST")
-@Mojo(name = "remap", defaultPhase = LifecyclePhase.PROCESS_SOURCES)
+@Mojo(name = "remap", defaultPhase = LifecyclePhase.PROCESS_CLASSES)
 class RemapMojo : AbstractMojo() {
     
     @Parameter(defaultValue = "\${project}", readonly = true, required = true)
     private lateinit var project: MavenProject
-    
-    @Parameter(defaultValue = "\${project.build.directory}", readonly = true, required = true)
-    private lateinit var buildDir: String
     
     @Component
     private lateinit var repoSystem: RepositorySystem
@@ -33,11 +30,8 @@ class RemapMojo : AbstractMojo() {
     @Parameter(defaultValue = "\${project.remoteProjectRepositories}", readonly = true, required = true)
     private val repositories: List<RemoteRepository>? = null
     
-    @Parameter(name = "srcIn", required = false)
-    private lateinit var srcIn: List<String>
-    
-    @Parameter(name = "srcOut", required = true)
-    private lateinit var srcOut: List<String>
+    @Parameter(name = "classesIn", required = false)
+    private lateinit var classesIn: List<String>
     
     @Parameter(name = "mapsMojang", required = true)
     private lateinit var mapsMojang: String
@@ -48,7 +42,6 @@ class RemapMojo : AbstractMojo() {
     @Parameter(name = "remapGoal", required = true)
     private lateinit var remapGoal: String
     
-    private val compileSourceRoots by lazy { if (::srcIn.isInitialized) srcIn else project.compileSourceRoots as MutableList<String> }
     private val goal by lazy { Mappings.ResolveGoal.valueOf(remapGoal.uppercase()) }
     
     override fun execute() {
@@ -72,25 +65,11 @@ class RemapMojo : AbstractMojo() {
     }
     
     private fun performRemapping() {
-        val baseDir = project.basedir
-        val buildDir = File(buildDir)
-        
-        val sourceRoots = if (::srcIn.isInitialized) srcIn else compileSourceRoots
-        
-        // Copy sources
-        sourceRoots.withIndex().forEach { (i, path) ->
-            val sourceRoot = File(path)
-            val copiedSourceRoot = File(
-                buildDir,
-                (srcOut.getOrNull(i) ?: "string-remapper-sources")
-                    + sourceRoot.absolutePath.removePrefix(baseDir.absolutePath)
-            )
-            copiedSourceRoot.deleteRecursively()
-            sourceRoot.copyRecursively(copiedSourceRoot, true)
-            
-            copiedSourceRoot.walkTopDown().filter(File::isFile).forEach { file ->
+        classesIn.forEach { path ->
+            val classesRoot = File(path)
+            classesRoot.walkTopDown().filter { it.isFile && it.extension == "class" }.forEach { file ->
                 log.debug("Remapping: ${file.absolutePath}")
-                FileRemapper(file).remap(goal)
+                FileRemapper(file, log).remap(goal)
             }
         }
     }

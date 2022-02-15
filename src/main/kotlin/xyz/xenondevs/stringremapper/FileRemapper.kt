@@ -1,33 +1,26 @@
 package xyz.xenondevs.stringremapper
 
+import org.apache.maven.plugin.logging.Log
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassWriter
+import xyz.xenondevs.stringremapper.Mappings.ResolveGoal
+import xyz.xenondevs.stringremapper.visitor.ClassRemapVisitor
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
-private val REMAP_INSTRUCTION_PATTERN = Regex(""""SR([CMF])\(([^"]*)\)"""")
-
-class FileRemapper(private val file: File) {
+class FileRemapper(private val file: File, private val log: Log) {
     
-    fun remap(goal: Mappings.ResolveGoal) {
-        var text = file.readText()
-        var hasChanged = false
-        
-        var result: MatchResult? = null
-        while (REMAP_INSTRUCTION_PATTERN.find(text)?.let { result = it } != null) {
-            val lookupType = result!!.groups[1]!!.value
-            val lookup = result!!.groups[2]!!.value
-            
-            val resolvedLookup = when (lookupType) {
-                "C" -> Mappings.resolveClassLookup(lookup, goal)
-                "M" -> Mappings.resolveMethodLookup(lookup, goal)
-                "F" -> Mappings.resolveFieldLookup(lookup, goal)
-                else -> throw UnsupportedOperationException()
-            }
-            
-            text = text.replaceRange(result!!.range, "\"$resolvedLookup\"")
-            
-            hasChanged = true
+    fun remap(goal: ResolveGoal) {
+        log.debug("Processing ${file.absolutePath}")
+        val changed = AtomicBoolean()
+        val reader = ClassReader(file.inputStream())
+        val writer = ClassWriter(0)
+        val visitor = ClassRemapVisitor(writer, goal, changed)
+        reader.accept(visitor, 0)
+        if (changed.get()) {
+            log.info("Remapped strings in ${file.name}")
+            file.writeBytes(writer.toByteArray())
         }
-        
-        if (hasChanged) file.writeText(text)
     }
     
 }
