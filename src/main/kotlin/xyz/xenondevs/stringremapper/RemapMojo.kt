@@ -30,8 +30,11 @@ class RemapMojo : AbstractMojo() {
     @Parameter(defaultValue = "\${project.remoteProjectRepositories}", readonly = true, required = true)
     private val repositories: List<RemoteRepository>? = null
     
-    @Parameter(name = "classesIn", required = false)
+    @Parameter(name = "classesIn", required = true)
     private lateinit var classesIn: List<String>
+    
+    @Parameter(name = "classesOut", required = true)
+    private lateinit var classesOut: List<String>
     
     @Parameter(name = "mapsMojang", required = true)
     private lateinit var mapsMojang: String
@@ -65,9 +68,14 @@ class RemapMojo : AbstractMojo() {
     }
     
     private fun performRemapping() {
-        classesIn.forEach { path ->
+        classesIn.forEachIndexed { i, path ->
             val classesRoot = File(path)
-            classesRoot.walkTopDown().filter { it.isFile && it.extension == "class" }.forEach { file ->
+            val classesCopy = File(classesOut[i])
+            
+            classesCopy.deleteRecursively()
+            classesRoot.copyRecursively(classesCopy)
+            
+            classesCopy.walkTopDown().filter { it.isFile && it.extension == "class" }.forEach { file ->
                 log.debug("Remapping: ${file.absolutePath}")
                 FileRemapper(file, log).remap(goal)
             }
