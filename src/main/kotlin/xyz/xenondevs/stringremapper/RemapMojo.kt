@@ -45,6 +45,9 @@ class RemapMojo : AbstractMojo() {
     @Parameter(name = "remapGoal", required = true)
     private lateinit var remapGoal: String
     
+    @Parameter(name = "classes", required = false)
+    private var classes: List<String>? = null
+    
     private val goal by lazy { Mappings.ResolveGoal.valueOf(remapGoal.uppercase()) }
     
     override fun execute() {
@@ -68,6 +71,8 @@ class RemapMojo : AbstractMojo() {
     }
     
     private fun performRemapping() {
+        if (classes != null)
+            classes = classes!!.map { it.replace('.', File.separatorChar) }
         classesIn.forEachIndexed { i, path ->
             val classesRoot = File(path)
             val classesCopy = File(classesOut[i])
@@ -75,10 +80,17 @@ class RemapMojo : AbstractMojo() {
             classesCopy.deleteRecursively()
             classesRoot.copyRecursively(classesCopy)
             
-            classesCopy.walkTopDown().filter { it.isFile && it.extension == "class" }.forEach { file ->
-                log.debug("Remapping: ${file.absolutePath}")
-                FileRemapper(file, log).remap(goal)
-            }
+            classesCopy.walkTopDown()
+                .filter {
+                    if (!it.isFile || it.extension != "class")
+                        return@filter false
+                    return@filter classes?.contains(
+                        it.toRelativeString(classesCopy).substringBefore('.').substringBefore('$')
+                    ) ?: true
+                }.forEach { file ->
+                    log.debug("Remapping: ${file.absolutePath}")
+                    FileRemapper(file, log).remap(goal)
+                }
         }
     }
     
