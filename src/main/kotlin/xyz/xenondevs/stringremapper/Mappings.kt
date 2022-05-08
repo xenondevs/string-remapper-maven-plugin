@@ -2,6 +2,7 @@ package xyz.xenondevs.stringremapper
 
 import org.objectweb.asm.Type
 import java.io.BufferedReader
+import java.io.File
 import java.io.Reader
 
 private val MOJANG_START_CLASS_PATTERN = Regex("""^([\w.$]*) -> ([\w.$]*):$""")
@@ -229,8 +230,20 @@ object Mappings {
         return null
     }
     
-    private fun getSpigotClassName(mojangClassName: String) =
-        spigotMappings[mojangMappings[mojangClassName]!!.name]!!.name
+    private fun getSpigotClassName(mojangClassName: String): String {
+        val obfuscatedName = mojangMappings[mojangClassName]!!.name
+        
+        val spigotName = spigotMappings[obfuscatedName]?.name
+        if (spigotName != null)
+            return spigotName
+        
+        if (obfuscatedName.contains('$')) {
+            val names = obfuscatedName.split('$')
+            return spigotMappings[names[0]]!!.name + "$" + names[1]
+        }
+        
+        return obfuscatedName
+    }
     
     enum class ResolveGoal {
         MOJANG,
