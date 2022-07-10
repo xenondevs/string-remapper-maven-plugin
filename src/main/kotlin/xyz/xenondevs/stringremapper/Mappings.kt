@@ -18,7 +18,7 @@ private val LIGHT_METHOD_MAPPINGS_LOOKUP_PATTERN = Regex("""^([\w.$]*) ([\w$]*)$
 private val FIELD_MAPPINGS_LOOKUP_PATTERN = Regex("""^([\w.$]*) ([\w.$\[\]]*) ([\w_$]*)$""")
 private val LIGHT_FIELD_MAPPINGS_LOOKUP_PATTERN = Regex("""^([\w.$]*) ([\w_$]*)$""")
 
-private val REMAP_INSTRUCTION_PATTERN = Regex("""SR([CMF])\(([^"]*)\)""")
+private val REMAP_INSTRUCTION_PATTERN = Regex("""SR([CMF])(/)?\(([^")]*)\)""")
 
 object Mappings {
     
@@ -247,23 +247,29 @@ object Mappings {
     }
     
     fun processString(value: String, goal: ResolveGoal): String {
-        var result: MatchResult? = null
+        var result = value
         
-        if (REMAP_INSTRUCTION_PATTERN.find(value)?.let { result = it } != null) {
-            val lookupType = result!!.groups[1]!!.value
-            val lookup = result!!.groups[2]!!.value
-    
-            val resolvedLookup = when (lookupType) {
+        generateSequence {
+            REMAP_INSTRUCTION_PATTERN.find(result)
+        }.forEach { matchResult ->
+            val lookupType = matchResult.groups[1]!!.value
+            val useSlashes = matchResult.groups[2] != null
+            val lookup = matchResult.groups[3]!!.value
+            
+            var resolvedLookup = when (lookupType) {
                 "C" -> resolveClassLookup(lookup, goal)
                 "M" -> resolveMethodLookup(lookup, goal)
                 "F" -> resolveFieldLookup(lookup, goal)
                 else -> throw UnsupportedOperationException()
             } ?: throw IllegalArgumentException("Could not resolve lookup: $lookup")
             
-            return resolvedLookup
+            if (useSlashes)
+                resolvedLookup = resolvedLookup.replace('.', '/')
+            
+            result = result.replaceRange(matchResult.range, resolvedLookup)
         }
         
-        return value
+        return result
     }
     
     enum class ResolveGoal {
