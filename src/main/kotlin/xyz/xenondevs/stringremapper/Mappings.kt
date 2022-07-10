@@ -2,7 +2,6 @@ package xyz.xenondevs.stringremapper
 
 import org.objectweb.asm.Type
 import java.io.BufferedReader
-import java.io.File
 import java.io.Reader
 
 private val MOJANG_START_CLASS_PATTERN = Regex("""^([\w.$]*) -> ([\w.$]*):$""")
@@ -18,6 +17,8 @@ private val METHOD_MAPPINGS_LOOKUP_PATTERN = Regex("""^([\w.$]*) ([\w.$\[\]]*) (
 private val LIGHT_METHOD_MAPPINGS_LOOKUP_PATTERN = Regex("""^([\w.$]*) ([\w$]*)$""")
 private val FIELD_MAPPINGS_LOOKUP_PATTERN = Regex("""^([\w.$]*) ([\w.$\[\]]*) ([\w_$]*)$""")
 private val LIGHT_FIELD_MAPPINGS_LOOKUP_PATTERN = Regex("""^([\w.$]*) ([\w_$]*)$""")
+
+private val REMAP_INSTRUCTION_PATTERN = Regex("""SR([CMF])\(([^"]*)\)""")
 
 object Mappings {
     
@@ -243,6 +244,26 @@ object Mappings {
         }
         
         return obfuscatedName
+    }
+    
+    fun processString(value: String, goal: ResolveGoal): String {
+        var result: MatchResult? = null
+        
+        if (REMAP_INSTRUCTION_PATTERN.find(value)?.let { result = it } != null) {
+            val lookupType = result!!.groups[1]!!.value
+            val lookup = result!!.groups[2]!!.value
+    
+            val resolvedLookup = when (lookupType) {
+                "C" -> resolveClassLookup(lookup, goal)
+                "M" -> resolveMethodLookup(lookup, goal)
+                "F" -> resolveFieldLookup(lookup, goal)
+                else -> throw UnsupportedOperationException()
+            } ?: throw IllegalArgumentException("Could not resolve lookup: $lookup")
+            
+            return resolvedLookup
+        }
+        
+        return value
     }
     
     enum class ResolveGoal {
